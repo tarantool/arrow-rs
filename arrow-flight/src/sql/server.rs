@@ -730,7 +730,7 @@ where
                 let record_count = self.do_put_statement_update(command, request).await?;
                 let result = DoPutUpdateResult { record_count };
                 let output = futures::stream::iter(vec![Ok(PutResult {
-                    app_metadata: result.as_any().encode_to_vec().into(),
+                    app_metadata: result.encode_to_vec().into(),
                 })]);
                 Ok(Response::new(Box::pin(output)))
             }
@@ -738,7 +738,7 @@ where
                 let record_count = self.do_put_statement_ingest(command, request).await?;
                 let result = DoPutUpdateResult { record_count };
                 let output = futures::stream::iter(vec![Ok(PutResult {
-                    app_metadata: result.as_any().encode_to_vec().into(),
+                    app_metadata: result.encode_to_vec().into(),
                 })]);
                 Ok(Response::new(Box::pin(output)))
             }
@@ -755,7 +755,7 @@ where
                 let record_count = self.do_put_substrait_plan(command, request).await?;
                 let result = DoPutUpdateResult { record_count };
                 let output = futures::stream::iter(vec![Ok(PutResult {
-                    app_metadata: result.as_any().encode_to_vec().into(),
+                    app_metadata: result.encode_to_vec().into(),
                 })]);
                 Ok(Response::new(Box::pin(output)))
             }
@@ -765,7 +765,7 @@ where
                     .await?;
                 let result = DoPutUpdateResult { record_count };
                 let output = futures::stream::iter(vec![Ok(PutResult {
-                    app_metadata: result.as_any().encode_to_vec().into(),
+                    app_metadata: result.encode_to_vec().into(),
                 })]);
                 Ok(Response::new(Box::pin(output)))
             }
