@@ -24,6 +24,7 @@ use futures::{stream, Stream, TryStreamExt};
 use once_cell::sync::Lazy;
 use prost::Message;
 use std::collections::HashSet;
+use std::future;
 use std::pin::Pin;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -971,7 +972,12 @@ mod tests {
 
             let flight_info = stmt.execute().await.unwrap();
 
-            let ticket = flight_info.endpoint[0].ticket.as_ref().unwrap().clone();
+            let ticket = flight_info.endpoint[0]
+                .ticket
+                .as_ref()
+                .cloned()
+                .map(|t| stream::once(future::ready(t)))
+                .unwrap();
             let flight_data = client.do_get(ticket).await.unwrap();
             let batches: Vec<_> = flight_data.try_collect().await.unwrap();
 

@@ -663,8 +663,19 @@ where
 
     async fn do_get(
         &self,
-        request: Request<Ticket>,
+        request: Request<Streaming<Ticket>>,
     ) -> Result<Response<Self::DoGetStream>, Status> {
+        let request = {
+            let (md, ext, mut ticket_stream) = request.into_parts();
+            ticket_stream
+                .next()
+                .await
+                .ok_or_else(|| {
+                    Status::invalid_argument("Unable to get a Ticket from do_get request.")
+                })?
+                .map(|ticket| Request::from_parts(md, ext, ticket))?
+        };
+
         let msg: Any =
             Message::decode(&*request.get_ref().ticket).map_err(decode_error_to_status)?;
 

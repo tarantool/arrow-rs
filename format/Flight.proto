@@ -105,7 +105,7 @@
     * more streams where each stream can be retrieved using a separate opaque
     * ticket that the flight service uses for managing a collection of streams.
     */
-   rpc DoGet(Ticket) returns (stream FlightData) {}
+   rpc DoGet(stream Ticket) returns (stream FlightData) {}
  
    /*
     * Push a stream to the flight service associated with a particular

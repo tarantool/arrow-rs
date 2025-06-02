@@ -296,9 +296,9 @@ impl FlightSqlServiceClient<Channel> {
     /// Given a flight ticket, request to be sent the stream. Returns record batch stream reader
     pub async fn do_get(
         &mut self,
-        ticket: impl IntoRequest<Ticket>,
+        ticket: impl tonic::IntoStreamingRequest<Message = Ticket>,
     ) -> Result<FlightRecordBatchStream, ArrowError> {
-        let req = self.set_request_headers(ticket.into_request())?;
+        let req = self.set_request_headers(ticket.into_streaming_request())?;
 
         let (md, response_stream, _ext) = self
             .flight_client

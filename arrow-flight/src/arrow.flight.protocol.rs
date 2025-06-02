@@ -696,7 +696,7 @@ pub mod flight_service_client {
         /// ticket that the flight service uses for managing a collection of streams.
         pub async fn do_get(
             &mut self,
-            request: impl tonic::IntoRequest<super::Ticket>,
+            request: impl tonic::IntoStreamingRequest<Message = super::Ticket>,
         ) -> std::result::Result<
             tonic::Response<tonic::codec::Streaming<super::FlightData>>,
             tonic::Status,
@@ -713,10 +713,10 @@ pub mod flight_service_client {
             let path = http::uri::PathAndQuery::from_static(
                 "/arrow.flight.protocol.FlightService/DoGet",
             );
-            let mut req = request.into_request();
+            let mut req = request.into_streaming_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("arrow.flight.protocol.FlightService", "DoGet"));
-            self.inner.server_streaming(req, path, codec).await
+            self.inner.streaming(req, path, codec).await
         }
         ///
         /// Push a stream to the flight service associated with a particular
@@ -958,7 +958,7 @@ pub mod flight_service_server {
         /// ticket that the flight service uses for managing a collection of streams.
         async fn do_get(
             &self,
-            request: tonic::Request<super::Ticket>,
+            request: tonic::Request<tonic::Streaming<super::Ticket>>,
         ) -> std::result::Result<tonic::Response<Self::DoGetStream>, tonic::Status>;
         /// Server streaming response type for the DoPut method.
         type DoPutStream: tonic::codegen::tokio_stream::Stream<
@@ -1342,9 +1342,7 @@ pub mod flight_service_server {
                 "/arrow.flight.protocol.FlightService/DoGet" => {
                     #[allow(non_camel_case_types)]
                     struct DoGetSvc<T: FlightService>(pub Arc<T>);
-                    impl<
-                        T: FlightService,
-                    > tonic::server::ServerStreamingService<super::Ticket>
+                    impl<T: FlightService> tonic::server::StreamingService<super::Ticket>
                     for DoGetSvc<T> {
                         type Response = super::FlightData;
                         type ResponseStream = T::DoGetStream;
@@ -1354,7 +1352,7 @@ pub mod flight_service_server {
                         >;
                         fn call(
                             &mut self,
-                            request: tonic::Request<super::Ticket>,
+                            request: tonic::Request<tonic::Streaming<super::Ticket>>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
@@ -1380,7 +1378,7 @@ pub mod flight_service_server {
                                 max_decoding_message_size,
                                 max_encoding_message_size,
                             );
-                        let res = grpc.server_streaming(method, req).await;
+                        let res = grpc.streaming(method, req).await;
                         Ok(res)
                     };
                     Box::pin(fut)
