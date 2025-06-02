@@ -53,7 +53,11 @@ use crate::error::{FlightError, Result};
 /// # unimplemented!();
 ///
 /// let request = tonic::Request::new(
-///   Ticket { ticket: Bytes::new() }
+///   futures::stream::once(
+///     std::future::ready(
+///       Ticket { ticket: Bytes::new() }
+///     )
+///   )
 /// );
 ///
 /// // Get a stream of FlightData;

@@ -113,7 +113,7 @@ impl FlightService for AuthBasicProtoScenarioImpl {
 
     async fn do_get(
         &self,
-        request: Request<Ticket>,
+        request: Request<Streaming<Ticket>>,
     ) -> Result<Response<Self::DoGetStream>, Status> {
         self.check_auth(request.metadata()).await?;
         Err(Status::unimplemented("Not yet implemented"))

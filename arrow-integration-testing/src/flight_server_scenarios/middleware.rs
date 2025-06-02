@@ -70,7 +70,7 @@ impl FlightService for MiddlewareScenarioImpl {
 
     async fn do_get(
         &self,
-        _request: Request<Ticket>,
+        _request: Request<Streaming<Ticket>>,
     ) -> Result<Response<Self::DoGetStream>, Status> {
         Err(Status::unimplemented("Not yet implemented"))
     }

@@ -395,12 +395,17 @@ impl FlightService for TestFlightServer {
 
     async fn do_get(
         &self,
-        request: Request<Ticket>,
+        request: Request<Streaming<Ticket>>,
     ) -> Result<Response<Self::DoGetStream>, Status> {
         self.save_metadata(&request);
+        let ticket = request
+            .into_inner()
+            .next()
+            .await
+            .ok_or_else(|| Status::invalid_argument("Must have a ticket"))??;
         let mut state = self.state.lock().expect("mutex not poisoned");
 
-        state.do_get_request = Some(request.into_inner());
+        state.do_get_request = Some(ticket);
 
         let batches: Vec<_> = state
             .do_get_response

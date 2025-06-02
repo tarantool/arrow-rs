@@ -105,9 +105,13 @@ impl FlightService for FlightServiceImpl {
 
     async fn do_get(
         &self,
-        request: Request<Ticket>,
+        request: Request<Streaming<Ticket>>,
     ) -> Result<Response<Self::DoGetStream>, Status> {
-        let ticket = request.into_inner();
+        let mut ticket = request.into_inner();
+        let ticket = ticket
+            .next()
+            .await
+            .ok_or_else(|| Status::invalid_argument("Must have a ticket."))??;
 
         let key = str::from_utf8(&ticket.ticket)
             .map_err(|e| Status::invalid_argument(format!("Invalid ticket: {e:?}")))?;

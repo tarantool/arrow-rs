@@ -32,10 +32,10 @@ use arrow_flight::{
     utils::flight_data_to_arrow_batch, FlightData, FlightDescriptor, Location, SchemaAsIpc, Ticket,
 };
 use futures::{channel::mpsc, sink::SinkExt, stream, StreamExt};
-use tonic::{Request, Streaming};
+use tonic::{IntoStreamingRequest, Request, Streaming};
 
 use arrow::datatypes::Schema;
-use std::sync::Arc;
+use std::{future, sync::Arc};
 
 type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 type Result<T = (), E = Error> = std::result::Result<T, E>;
@@ -187,7 +187,8 @@ async fn consume_flight_location(
     location.uri = location.uri.replace("grpc+tcp://", "http://");
 
     let mut client = FlightServiceClient::connect(location.uri).await?;
-    let resp = client.do_get(ticket).await?;
+    let ticket = stream::once(future::ready(ticket));
+    let resp = client.do_get(ticket.into_streaming_request()).await?;
     let mut resp = resp.into_inner();
 
     let flight_schema = receive_schema_flight_data(&mut resp)

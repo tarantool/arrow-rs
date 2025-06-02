@@ -31,6 +31,7 @@ use futures::{
     Stream, StreamExt, TryStreamExt,
 };
 use prost::Message;
+use std::future;
 use tonic::{metadata::MetadataMap, transport::Channel};
 
 use crate::error::{FlightError, Result};
@@ -204,7 +205,9 @@ impl FlightClient {
     /// # }
     /// ```
     pub async fn do_get(&mut self, ticket: Ticket) -> Result<FlightRecordBatchStream> {
-        let request = self.make_request(ticket);
+        let request = self
+            .make_request(ticket)
+            .map(|t| stream::once(future::ready(t)));
 
         let (md, response_stream, _ext) = self.inner.do_get(request).await?.into_parts();
         let (response_stream, trailers) = extract_lazy_trailers(response_stream);

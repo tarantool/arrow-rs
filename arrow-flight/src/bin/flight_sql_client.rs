@@ -27,7 +27,8 @@ use arrow_flight::{
 use arrow_schema::Schema;
 use clap::{Parser, Subcommand};
 use core::str;
-use futures::TryStreamExt;
+use futures::{stream, TryStreamExt};
+use std::future;
 use tonic::{
     metadata::MetadataMap,
     transport::{Channel, ClientTlsConfig, Endpoint},
@@ -280,11 +281,12 @@ async fn execute_flight(
     info!("decoded schema");
 
     for endpoint in info.endpoint {
-        let Some(ticket) = &endpoint.ticket else {
-            bail!("did not get ticket");
+        let ticket = match endpoint.ticket {
+            Some(ticket) => stream::once(future::ready(ticket)),
+            None => bail!("did not get ticket"),
         };
 
-        let mut flight_data = client.do_get(ticket.clone()).await.context("do get")?;
+        let mut flight_data = client.do_get(ticket).await.context("do get")?;
         log_metadata(flight_data.headers(), "header");
 
         let mut endpoint_batches: Vec<_> = (&mut flight_data)
