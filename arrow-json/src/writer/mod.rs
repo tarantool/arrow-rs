@@ -111,6 +111,7 @@ use std::{fmt::Debug, io::Write};
 use arrow_array::*;
 use arrow_schema::*;
 
+use arrow_cast::display::DecimalFormat;
 use encoder::{make_encoder, EncoderOptions};
 
 /// This trait defines how to format a sequence of JSON objects to a
@@ -227,6 +228,11 @@ impl WriterBuilder {
         self.0.explicit_nulls
     }
 
+    /// Returns the decimal format for this writer
+    pub fn decimal_format(&self) -> DecimalFormat {
+        self.0.decimal_format
+    }
+
     /// Set whether to keep keys with null values, or to omit writing them.
     ///
     /// For example, with [`LineDelimited`] format:
@@ -250,6 +256,12 @@ impl WriterBuilder {
     /// Default is to skip nulls (set to `false`).
     pub fn with_explicit_nulls(mut self, explicit_nulls: bool) -> Self {
         self.0.explicit_nulls = explicit_nulls;
+        self
+    }
+
+    /// Set how decimals should be formatted in JSON output.
+    pub fn with_decimal_format(mut self, decimal_format: DecimalFormat) -> Self {
+        self.0.decimal_format = decimal_format;
         self
     }
 
@@ -430,6 +442,29 @@ mod tests {
             .collect();
 
         assert_eq!(expected, actual);
+    }
+
+    /// Helper to assert decimal output with `Number` and `String` decimal formats
+    fn assert_decimal_outputs(
+        batch: &RecordBatch,
+        expected_default: &str,
+        expected_decimal_as_string: &str,
+    ) {
+        let mut buf = Vec::new();
+        {
+            let mut writer = LineDelimitedWriter::new(&mut buf);
+            writer.write_batches(&[batch]).unwrap();
+        }
+        assert_json_eq(&buf, expected_default);
+
+        let mut buf = Vec::new();
+        {
+            let mut writer = WriterBuilder::new()
+                .with_decimal_format(DecimalFormat::String)
+                .build::<_, LineDelimited>(&mut buf);
+            writer.write_batches(&[batch]).unwrap();
+        }
+        assert_json_eq(&buf, expected_decimal_as_string);
     }
 
     #[test]
@@ -1887,17 +1922,15 @@ mod tests {
         let schema = Schema::new(vec![field]);
         let batch = RecordBatch::try_new(Arc::new(schema), vec![Arc::new(array)]).unwrap();
 
-        let mut buf = Vec::new();
-        {
-            let mut writer = LineDelimitedWriter::new(&mut buf);
-            writer.write_batches(&[&batch]).unwrap();
-        }
-
-        assert_json_eq(
-            &buf,
+        assert_decimal_outputs(
+            &batch,
             r#"{"decimal":12.34}
 {"decimal":56.78}
 {"decimal":90.12}
+"#,
+            r#"{"decimal":"12.34"}
+{"decimal":"56.78"}
+{"decimal":"90.12"}
 "#,
         );
     }
@@ -1914,18 +1947,15 @@ mod tests {
         let field = Arc::new(Field::new("decimal", array.data_type().clone(), true));
         let schema = Schema::new(vec![field]);
         let batch = RecordBatch::try_new(Arc::new(schema), vec![Arc::new(array)]).unwrap();
-
-        let mut buf = Vec::new();
-        {
-            let mut writer = LineDelimitedWriter::new(&mut buf);
-            writer.write_batches(&[&batch]).unwrap();
-        }
-
-        assert_json_eq(
-            &buf,
+        assert_decimal_outputs(
+            &batch,
             r#"{"decimal":12.3400}
 {"decimal":56.7800}
 {"decimal":90.1200}
+"#,
+            r#"{"decimal":"12.3400"}
+{"decimal":"56.7800"}
+{"decimal":"90.1200"}
 "#,
         );
     }
@@ -1938,18 +1968,116 @@ mod tests {
         let field = Arc::new(Field::new("decimal", array.data_type().clone(), true));
         let schema = Schema::new(vec![field]);
         let batch = RecordBatch::try_new(Arc::new(schema), vec![Arc::new(array)]).unwrap();
-
-        let mut buf = Vec::new();
-        {
-            let mut writer = LineDelimitedWriter::new(&mut buf);
-            writer.write_batches(&[&batch]).unwrap();
-        }
-
-        assert_json_eq(
-            &buf,
+        assert_decimal_outputs(
+            &batch,
             r#"{"decimal":12.34}
 {}
 {"decimal":56.78}
+"#,
+            r#"{"decimal":"12.34"}
+{}
+{"decimal":"56.78"}
+"#,
+        );
+    }
+
+    #[test]
+    fn test_decimal128_list_encoder() {
+        let decimal_type = DataType::Decimal128(10, 2);
+        let item_field = FieldRef::new(Field::new("item", decimal_type.clone(), true));
+        let schema = Schema::new(vec![Field::new("list", DataType::List(item_field), true)]);
+
+        let values_builder = Decimal128Builder::new().with_data_type(decimal_type.clone());
+        let mut list_builder = ListBuilder::new(values_builder);
+        let rows = [Some(vec![Some(1234), None]), Some(vec![Some(5678)])];
+
+        for row in rows {
+            match row {
+                Some(values) => {
+                    for value in values {
+                        match value {
+                            Some(v) => list_builder.values().append_value(v),
+                            None => list_builder.values().append_null(),
+                        }
+                    }
+                    list_builder.append(true);
+                }
+                None => list_builder.append(false),
+            }
+        }
+
+        let array = Arc::new(list_builder.finish()) as ArrayRef;
+        let batch = RecordBatch::try_new(Arc::new(schema), vec![array]).unwrap();
+
+        assert_decimal_outputs(
+            &batch,
+            r#"{"list":[12.34,null]}
+{"list":[56.78]}
+"#,
+            r#"{"list":["12.34",null]}
+{"list":["56.78"]}
+"#,
+        );
+    }
+
+    #[test]
+    fn test_decimal128_dictionary_encoder() {
+        let values = Arc::new(
+            Decimal128Array::from_iter_values([1234, 5678])
+                .with_precision_and_scale(10, 2)
+                .unwrap(),
+        );
+        let keys = Int8Array::from(vec![Some(0), None, Some(1)]);
+        let dict = DictionaryArray::new(keys, values.clone());
+
+        let schema = Schema::new(vec![Field::new(
+            "dict",
+            DataType::Dictionary(DataType::Int8.into(), DataType::Decimal128(10, 2).into()),
+            true,
+        )]);
+
+        let batch = RecordBatch::try_new(Arc::new(schema), vec![Arc::new(dict)]).unwrap();
+
+        assert_decimal_outputs(
+            &batch,
+            r#"{"dict":12.34}
+{}
+{"dict":56.78}
+"#,
+            r#"{"dict":"12.34"}
+{}
+{"dict":"56.78"}
+"#,
+        );
+    }
+
+    #[test]
+    fn test_decimal256_dictionary_encoder() {
+        let values = Arc::new(
+            Decimal256Array::from_iter_values([i256::from(1234), i256::from(5678)])
+                .with_precision_and_scale(10, 2)
+                .unwrap(),
+        );
+        let keys = Int8Array::from(vec![Some(0), None, Some(1)]);
+        let dict = DictionaryArray::new(keys, values.clone());
+
+        let schema = Schema::new(vec![Field::new(
+            "dict",
+            DataType::Dictionary(DataType::Int8.into(), DataType::Decimal256(10, 2).into()),
+            true,
+        )]);
+
+        let batch = RecordBatch::try_new(Arc::new(schema), vec![Arc::new(dict)]).unwrap();
+
+        assert_decimal_outputs(
+            &batch,
+            r#"{"dict":12.34}
+{}
+{"dict":56.78}
+"#,
+            r#"{"dict":"12.34"}
+{}
+{"dict":"56.78"}
 "#,
         );
     }

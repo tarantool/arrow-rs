@@ -38,6 +38,17 @@ use lexical_core::FormattedSize;
 
 type TimeFormat<'a> = Option<&'a str>;
 
+/// Format for displaying decimals
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum DecimalFormat {
+    /// Render decimals as JSON numbers, e.g. 12.34
+    #[default]
+    Number,
+    /// Render decimals as JSON strings, e.g. "12.34"
+    String,
+}
+
 /// Format for displaying durations
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -72,6 +83,8 @@ pub struct FormatOptions<'a> {
     time_format: TimeFormat<'a>,
     /// Duration format
     duration_format: DurationFormat,
+    /// Decimal rendering format
+    decimal_format: DecimalFormat,
 }
 
 impl Default for FormatOptions<'_> {
@@ -92,6 +105,7 @@ impl<'a> FormatOptions<'a> {
             timestamp_tz_format: None,
             time_format: None,
             duration_format: DurationFormat::ISO8601,
+            decimal_format: DecimalFormat::Number,
         }
     }
 
@@ -155,6 +169,14 @@ impl<'a> FormatOptions<'a> {
     pub const fn with_duration_format(self, duration_format: DurationFormat) -> Self {
         Self {
             duration_format,
+            ..self
+        }
+    }
+
+    /// Set how decimal values should be formatted
+    pub const fn with_decimal_format(self, decimal_format: DecimalFormat) -> Self {
+        Self {
+            decimal_format,
             ..self
         }
     }
@@ -460,14 +482,24 @@ impl DisplayIndex for &PrimitiveArray<Float16Type> {
 macro_rules! decimal_display {
     ($($t:ty),+) => {
         $(impl<'a> DisplayIndexState<'a> for &'a PrimitiveArray<$t> {
-            type State = (u8, i8);
+            type State = (u8, i8, DecimalFormat);
 
-            fn prepare(&self, _options: &FormatOptions<'a>) -> Result<Self::State, ArrowError> {
-                Ok((self.precision(), self.scale()))
+            fn prepare(&self, options: &FormatOptions<'a>) -> Result<Self::State, ArrowError> {
+                Ok((self.precision(), self.scale(), options.decimal_format))
             }
 
             fn write(&self, s: &Self::State, idx: usize, f: &mut dyn Write) -> FormatResult {
-                write!(f, "{}", <$t>::format_decimal(self.values()[idx], s.0, s.1))?;
+                let formatted = <$t>::format_decimal(self.values()[idx], s.0, s.1);
+                match s.2 {
+                    DecimalFormat::String => {
+                        // Format as quoted string
+                        write!(f, "\"{}\"", formatted)?;
+                    }
+                    DecimalFormat::Number => {
+                        // Format as number
+                        write!(f, "{}", formatted)?;
+                    }
+                }
                 Ok(())
             }
         })+
