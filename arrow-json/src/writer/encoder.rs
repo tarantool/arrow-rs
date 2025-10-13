@@ -19,7 +19,7 @@ use arrow_array::cast::AsArray;
 use arrow_array::types::*;
 use arrow_array::*;
 use arrow_buffer::{ArrowNativeType, NullBuffer, OffsetBuffer, ScalarBuffer};
-use arrow_cast::display::{ArrayFormatter, FormatOptions};
+use arrow_cast::display::{ArrayFormatter, DecimalFormat, FormatOptions};
 use arrow_schema::{ArrowError, DataType, FieldRef};
 use half::f16;
 use lexical_core::FormattedSize;
@@ -29,6 +29,7 @@ use std::io::Write;
 #[derive(Debug, Clone, Default)]
 pub struct EncoderOptions {
     pub explicit_nulls: bool,
+    pub decimal_format: DecimalFormat,
 }
 
 /// A trait to format array values as JSON values
@@ -139,8 +140,10 @@ fn make_encoder_impl<'a>(
             (Box::new(encoder) as _, array.nulls().cloned())
         }
         DataType::Decimal128(_, _) | DataType::Decimal256(_, _) => {
-            let options = FormatOptions::new().with_display_error(true);
-            let formatter = ArrayFormatter::try_new(array, &options)?;
+            let format_options = FormatOptions::new()
+                .with_display_error(true)
+                .with_decimal_format(options.decimal_format);
+            let formatter = ArrayFormatter::try_new(array, &format_options)?;
             (Box::new(RawArrayFormatter(formatter)) as _, array.nulls().cloned())
         }
         d => match d.is_temporal() {
